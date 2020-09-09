@@ -44,6 +44,9 @@ create_desktop_package ()
 		# overwrite stock chromium and firefox configuration
 		if [ -d /etc/chromium-browser/ ]; then ln -sf /etc/armbian/chromium.conf /etc/chromium-browser/default; fi
 		if [ -d /etc/chromium.d/ ]; then ln -sf /etc/armbian/chromium.conf /etc/chromium.d/chromium.conf; fi
+
+		if [ -d /etc/firefox/ ]; then ln -sf /etc/armbian/firefox.conf /etc/firefox/syspref.js; fi
+
 		cp -R /etc/armbian/chromium /usr/share
 		# overwrite stock lightdm greeter configuration
 		if [ -d /etc/armbian/lightdm ]; then cp -R /etc/armbian/lightdm /etc/; fi

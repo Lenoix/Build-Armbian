@@ -50,16 +50,11 @@ echo "Start backup u-boot default"
 
 dd if="${DEV_EMMC}" of=/root/u-boot-default-aml.img bs=1M count=4
 
-dd if=/dev/zero of="${DEV_EMMC}" bs=512 count=1
-
-#dd if=/root/u-boot-default-aml.img of="${DEV_EMMC}" bs=1 count=442
-#dd if=/root/u-boot-default-aml.img of="${DEV_EMMC}" bs=512 skip=1 seek=1
-
 echo "Start create MBR and partittion"
 
 parted -s "${DEV_EMMC}" mklabel msdos
-parted -s "${DEV_EMMC}" mkpart primary fat32 700M 1212M
-parted -s "${DEV_EMMC}" mkpart primary ext4 1213M 100%
+parted -s "${DEV_EMMC}" mkpart primary fat32 1000M 1512M
+parted -s "${DEV_EMMC}" mkpart primary ext4 1513M 100%
 
 echo "Start restore u-boot"
 
@@ -105,12 +100,14 @@ echo "done."
 
 rm $DIR_INSTALL/s9*
 rm $DIR_INSTALL/aml*
-rm $DIR_INSTALL/boot.ini
-#mv -f $DIR_INSTALL/boot-emmc.scr $DIR_INSTALL/boot.scr
 
 if [ -f /boot/u-boot.ext ] ; then
     mv -f $DIR_INSTALL/u-boot.ext $DIR_INSTALL/u-boot.emmc
-#    mv -f $DIR_INSTALL/boot-emmc.ini $DIR_INSTALL/boot.ini
+
+    sed -e "s/u-boot.ext/u-boot.emmc/g" \
+     -i "$DIR_INSTALL/boot.ini"
+    echo "done."
+
     sync
 fi
 
