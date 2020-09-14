@@ -42,6 +42,7 @@ if [[ $ADD_UBOOT == yes ]]; then
 
 	display_alert "Compiling ATF" "" "info"
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	local toolchain
@@ -56,6 +57,7 @@ if [[ $ADD_UBOOT == yes ]]; then
 		[[ -z $toolchain2 ]] && exit_with_error "Could not find required toolchain" "${toolchain2_type}gcc $toolchain2_ver"
 	fi
 
+# build aarch64
   fi
 
 	display_alert "Compiler version" "${ATF_COMPILER}gcc $(eval env PATH="${toolchain}:${PATH}" "${ATF_COMPILER}gcc" -dumpversion)" "info"
@@ -135,6 +137,7 @@ if [[ $ADD_UBOOT == yes ]]; then
 
 	display_alert "Compiling u-boot" "$version" "info"
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	local toolchain
@@ -149,6 +152,7 @@ if [[ $ADD_UBOOT == yes ]]; then
 		[[ -z $toolchain2 ]] && exit_with_error "Could not find required toolchain" "${toolchain2_type}gcc $toolchain2_ver"
 	fi
 
+# build aarch64
   fi
 
 	display_alert "Compiler version" "${UBOOT_COMPILER}gcc $(eval env PATH="${toolchain}:${toolchain2}:${PATH}" "${UBOOT_COMPILER}gcc" -dumpversion)" "info"
@@ -165,6 +169,10 @@ if [[ $ADD_UBOOT == yes ]]; then
 		target_make=$(cut -d';' -f1 <<< "${target}")
 		target_patchdir=$(cut -d';' -f2 <<< "${target}")
 		target_files=$(cut -d';' -f3 <<< "${target}")
+
+		# needed for multiple targets and for calling compile_uboot directly
+		display_alert "Checking out to clean sources"
+		git checkout -f -q HEAD
 
 		if [[ $CLEAN_LEVEL == *make* ]]; then
 			display_alert "Cleaning" "$BOOTSOURCEDIR" "info"
@@ -345,12 +353,14 @@ compile_kernel()
 
 	display_alert "Compiling $BRANCH kernel" "$version" "info"
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	local toolchain
 	toolchain=$(find_toolchain "$KERNEL_COMPILER" "$KERNEL_USE_GCC")
 	[[ -z $toolchain ]] && exit_with_error "Could not find required toolchain" "${KERNEL_COMPILER}gcc $KERNEL_USE_GCC"
 
+# build aarch64
   fi
 
 	display_alert "Compiler version" "${KERNEL_COMPILER}gcc $(eval env PATH="${toolchain}:${PATH}" "${KERNEL_COMPILER}gcc" -dumpversion)" "info"
@@ -477,7 +487,7 @@ compile_kernel()
 	echo "${hash}" > "${SRC}/cache/hash/linux-image-${BRANCH}-${LINUXFAMILY}.githash"
 	[[ -z ${KERNELPATCHDIR} ]] && KERNELPATCHDIR=$LINUXFAMILY-$BRANCH
 	[[ -z ${LINUXCONFIG} ]] && LINUXCONFIG=linux-$LINUXFAMILY-$BRANCH
-	hash_watch_1=$(find "${SRC}/patch/kernel/${KERNELPATCHDIR}" -maxdepth 1 -printf '%s %P\n')
+	hash_watch_1=$(find "${SRC}/patch/kernel/${KERNELPATCHDIR}" -maxdepth 1 -printf '%s %P\n' 2> /dev/null | sort)
 	hash_watch_2=$(cat "${SRC}/config/kernel/${LINUXCONFIG}.config")
 	echo "${hash_watch_1}${hash_watch_2}" | git hash-object --stdin >> "${SRC}/cache/hash/linux-image-${BRANCH}-${LINUXFAMILY}.githash"
 }
@@ -553,7 +563,7 @@ compile_armbian-config()
 	Architecture: all
 	Maintainer: $MAINTAINER <$MAINTAINERMAIL>
 	Replaces: armbian-bsp
-	Depends: bash, iperf3, psmisc, curl, bc, expect, dialog, iptables, resolvconf, pv, \
+	Depends: bash, iperf3, psmisc, curl, bc, expect, dialog, pv, \
 	debconf-utils, unzip, build-essential, html2text, apt-transport-https, html2text, dirmngr, software-properties-common
 	Recommends: armbian-bsp
 	Suggests: libpam-google-authenticator, qrencode, network-manager, sunxi-tools
@@ -633,7 +643,7 @@ find_toolchain()
 	# extract target major.minor version from expression
 	local target_ver
 	target_ver=$(grep -oE "[[:digit:]]+\.[[:digit:]]" <<< "$expression")
-	for dir in "${SRC}"/cache/toolchains/*/; do
+	for dir in "${SRC}"/cache/toolchain/*/; do
 		# check if is a toolchain for current $ARCH
 		[[ ! -f ${dir}bin/${compiler}gcc ]] && continue
 		# get toolchain major.minor version
@@ -775,7 +785,14 @@ userpatch_create()
 	local patch="$DEST/patch/$1-$LINUXFAMILY-$BRANCH.patch"
 
 	# apply previous user debug mode created patches
-	[[ -f $patch ]] && display_alert "Applying existing $1 patch" "$patch" "wrn" && patch --batch --silent -p1 -N < "${patch}"
+	if [[ -f $patch ]]; then
+		display_alert "Applying existing $1 patch" "$patch" "wrn" && patch --batch --silent -p1 -N < "${patch}"
+		# read title of a patch in case Git is configured
+		if [[ -n $(git config user.email) ]]; then
+			COMMIT_MESSAGE=$(cat "${patch}" | grep Subject | sed -n -e '0,/PATCH/s/.*PATCH]//p' | xargs)
+			display_alert "Patch name extracted" "$COMMIT_MESSAGE" "wrn"
+		fi
+	fi
 
 	# prompt to alter source
 	display_alert "Make your changes in this directory:" "$(pwd)" "wrn"
@@ -785,7 +802,21 @@ userpatch_create()
 	git add .
 	# create patch out of changes
 	if ! git diff-index --quiet --cached HEAD; then
-		git diff --staged > "${patch}"
+		# If Git is configured, create proper patch and ask for a name
+		if [[ -n $(git config user.email) ]]; then
+			display_alert "Add / change patch name" "$COMMIT_MESSAGE" "wrn"
+			read -e -p "Patch description: " -i "$COMMIT_MESSAGE" COMMIT_MESSAGE
+			[[ -z "$COMMIT_MESSAGE" ]] && COMMIT_MESSAGE="Patching something"
+			git commit -s -m "$COMMIT_MESSAGE"
+			git format-patch -1 HEAD --stdout --signature="Created with Armbian build tools https://github.com/armbian/build" > "${patch}"
+			PATCHFILE=$(git format-patch -1 HEAD)
+			rm $PATCHFILE # delete the actual file
+			# create a symlink to have a nice name ready
+			find $DEST/patch/ -type l -delete # delete any existing
+			ln -sf $patch $DEST/patch/$PATCHFILE
+		else
+			git diff --staged > "${patch}"
+		fi
 		display_alert "You will find your patch here:" "$patch" "info"
 	else
 		display_alert "No changes found, skipping patch creation" "" "wrn"

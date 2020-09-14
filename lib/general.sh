@@ -171,45 +171,15 @@ create_sources_list()
 	;;
 	esac
 
-	# workaround for Chromium by downloading it from Debian
-	if [[ $release == focal || $release == eoan ]]; then
-
-		cat <<-EOF > "${basedir}"/etc/apt/preferences.d/chromium.pref
-		# Note: 2 blank lines are required between entries
-		Package: *
-		Pin: release a=${release}
-		Pin-Priority: 500
-
-		Package: *
-		Pin: origin "${DEBIAN_MIRROR//\/debian}"
-		Pin-Priority: 300
-
-		# Pattern includes 'chromium', 'chromium-browser' and similarly
-		# named dependencies:
-		Package: chromium*
-		Pin: origin "${DEBIAN_MIRROR//\/debian}"
-		Pin-Priority: 700
-		EOF
-
-		cat <<-EOF > "${basedir}"/etc/apt/sources.list.d/debian.list
-		deb http://${DEBIAN_MIRROR} stable main
-		deb http://${DEBIAN_MIRROR} stable-updates main
-		deb http://${DEBIAN_MIRROR}-security stable/updates main
-		EOF
-
-		chroot "${SDCARD}" /bin/bash -c "apt-key add /usr/share/keyrings/debian-archive-keyring.gpg >/dev/null 2>&1"
-
-	fi
-
 	# stage: add armbian repository and install key
 	if [[ $DOWNLOAD_MIRROR == "china" ]]; then
 		echo "deb http://mirrors.tuna.tsinghua.edu.cn/armbian $RELEASE main ${RELEASE}-utils ${RELEASE}-desktop" > "${SDCARD}"/etc/apt/sources.list.d/armbian.list
 	else
-		echo "deb http://apt.armbian.com $RELEASE main ${RELEASE}-utils ${RELEASE}-desktop" > "${SDCARD}"/etc/apt/sources.list.d/armbian.list
+		echo "deb http://"$([[ $BETA == yes ]] && echo "beta" || echo "apt" )".armbian.com $RELEASE main ${RELEASE}-utils ${RELEASE}-desktop" > "${SDCARD}"/etc/apt/sources.list.d/armbian.list
 	fi
 
-	# add local package server if defined. Suitable for development
-	[[ -n $LOCAL_MIRROR ]] && echo "deb http://$LOCAL_MIRROR $RELEASE main ${RELEASE}-utils ${RELEASE}-desktop" >> "${SDCARD}"/etc/apt/sources.list.d/armbian.list
+	# replace local package server if defined. Suitable for development
+	[[ -n $LOCAL_MIRROR ]] && echo "deb http://$LOCAL_MIRROR $RELEASE main ${RELEASE}-utils ${RELEASE}-desktop" > "${SDCARD}"/etc/apt/sources.list.d/armbian.list
 
 	display_alert "Adding Armbian repository and authentication key" "/etc/apt/sources.list.d/armbian.list" "info"
 	cp "${SRC}"/config/armbian.key "${SDCARD}"
@@ -776,7 +746,7 @@ repo-manipulate() {
 		serve)
 			# display repository content
 			display_alert "Serving content" "common utils" "ext"
-			aptly serve -listen=$(ip -f inet addr | grep -Po 'inet \K[\d.]+' | grep -v 127.0.0.1 | head -1):8080 -config="${SCRIPTPATH}config/${REPO_CONFIG}"
+			aptly serve -listen=$(ip -f inet addr | grep -Po 'inet \K[\d.]+' | grep -v 127.0.0.1 | head -1):80 -config="${SCRIPTPATH}config/${REPO_CONFIG}"
 			exit 0
 			;;
 		show)
@@ -958,7 +928,7 @@ prepare_host()
 	else
 		local offline=false
 	fi
-
+# build aarch64
   if [[ $(dpkg --print-architecture) != arm64 ]]; then
 
 	if [[ $(dpkg --print-architecture) != amd64 ]]; then
@@ -967,6 +937,7 @@ prepare_host()
 		exit_with_error "Running this tool on non x86-x64 build host in not supported"
 	fi
 
+# build aarch64
   fi
 
 	# wait until package manager finishes possible system maintanace
@@ -978,6 +949,7 @@ prepare_host()
 	# packages list for host
 	# NOTE: please sync any changes here with the Dockerfile and Vagrantfile
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	local hostdeps="wget ca-certificates device-tree-compiler pv bc lzop zip binfmt-support build-essential ccache debootstrap ntpdate \
@@ -988,6 +960,7 @@ prepare_host()
 	locales ncurses-base pixz dialog systemd-container udev lib32stdc++6 libc6-i386 lib32ncurses5 lib32tinfo5 \
 	bison libbison-dev flex libfl-dev cryptsetup gpg gnupg1 cpio aria2 pigz dirmngr python3-distutils"
 
+# build aarch64
   else
 
 	local hostdeps="wget ca-certificates device-tree-compiler pv bc lzop zip binfmt-support build-essential ccache debootstrap ntpdate \
@@ -998,6 +971,7 @@ prepare_host()
 	locales ncurses-base pixz dialog systemd-container udev libc6 qemu\
 	bison libbison-dev flex libfl-dev cryptsetup gpg gnupg1 cpio aria2 pigz dirmngr python3-distutils"
 
+# build aarch64
   fi
 
 	local codename=$(lsb_release -sc)
@@ -1032,6 +1006,7 @@ prepare_host()
 		exit_with_error "Windows subsystem for Linux is not a supported build environment"
 	fi
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	if [[ -z $codename || "focal" == "$codename" || "eoan" == "$codename"  || "debbie" == "$codename"  || "buster" == "$codename" || "ulyana" == "$codename" ]]; then
@@ -1055,6 +1030,7 @@ prepare_host()
 		SYNC_CLOCK=no
 	fi
 
+# build aarch64
   fi
 
 	# Skip verification if you are working offline
@@ -1073,6 +1049,7 @@ prepare_host()
 
 	# distribution packages are buggy, download from author
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	if [[ ! -f /etc/apt/sources.list.d/aptly.list ]]; then
@@ -1089,6 +1066,7 @@ prepare_host()
 		sed "s/squeeze/nightly/" -i /etc/apt/sources.list.d/aptly.list
 	fi
 
+# build aarch64
   fi
 
 	if [[ ${#deps[@]} -gt 0 ]]; then
@@ -1105,12 +1083,14 @@ prepare_host()
 		ntpdate -s "${NTP_SERVER:-pool.ntp.org}"
 	fi
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	if [[ $(dpkg-query -W -f='${db:Status-Abbrev}\n' 'zlib1g:i386' 2>/dev/null) != *ii* ]]; then
 		apt-get install -qq -y --no-install-recommends zlib1g:i386 >/dev/null 2>&1
 	fi
 
+# build aarch64
   fi
 
 	# create directory structure
@@ -1123,39 +1103,33 @@ prepare_host()
 		find "${SRC}"/output "${USERPATCHES_PATH}" -type d ! -group sudo -exec chgrp --quiet sudo {} \;
 		find "${SRC}"/output "${USERPATCHES_PATH}" -type d ! -perm -g+w,g+s -exec chmod --quiet g+w,g+s {} \;
 	fi
-	mkdir -p "${DEST}"/debs-beta/extra "${DEST}"/debs/extra "${DEST}"/{config,debug,patch} "${USERPATCHES_PATH}"/overlay "${SRC}"/cache/{sources,hash,toolchains,utility,rootfs} "${SRC}"/.tmp
+	mkdir -p "${DEST}"/debs-beta/extra "${DEST}"/debs/extra "${DEST}"/{config,debug,patch} "${USERPATCHES_PATH}"/overlay "${SRC}"/cache/{sources,hash,toolchain,utility,rootfs} "${SRC}"/.tmp
 
+# build aarch64
   if [[ $(dpkg --print-architecture) == amd64 ]]; then
 
 	display_alert "Checking for external GCC compilers" "" "info"
 	# download external Linaro compiler and missing special dependencies since they are needed for certain sources
 
 	local toolchains=(
-		"https://dl.armbian.com/_toolchains/gcc-linaro-aarch64-none-elf-4.8-2013.11_linux.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-linaro-arm-linux-gnueabihf-4.8-2014.04_linux.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-4.9.4-2017.01-x86_64_aarch64-linux-gnu.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabi.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-5.5.0-2017.10-x86_64_aarch64-linux-gnu.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-5.5.0-2017.10-x86_64_arm-linux-gnueabi.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-5.5.0-2017.10-x86_64_arm-linux-gnueabihf.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-6.4.1-2017.11-x86_64_arm-linux-gnueabihf.tar.xz"
-#		"https://dl.armbian.com/_toolchains/gcc-linaro-6.4.1-2017.11-x86_64_aarch64-linux-gnu.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabihf.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-eabi.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz"
-		"https://dl.armbian.com/_toolchains/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-linaro-aarch64-none-elf-4.8-2013.11_linux.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-linaro-arm-none-eabi-4.8-2014.04_linux.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-linaro-arm-linux-gnueabihf-4.8-2014.04_linux.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-linaro-7.4.1-2019.02-x86_64_arm-linux-gnueabi.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-linaro-7.4.1-2019.02-x86_64_aarch64-linux-gnu.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-arm-9.2-2019.12-x86_64-arm-none-linux-gnueabihf.tar.xz"
+		"https://dl.armbian.com/_toolchain/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz"
 		)
 
+	USE_TORRENT_STATUS=${USE_TORRENT}
+	USE_TORRENT="no"
 	for toolchain in ${toolchains[@]}; do
-		download_and_verify "_toolchains" "${toolchain##*/}"
+		download_and_verify "_toolchain" "${toolchain##*/}"
 	done
+	USE_TORRENT=${USE_TORRENT_STATUS}
 
-	rm -rf "${SRC}"/cache/toolchains/*.tar.xz*
-	local existing_dirs=( $(ls -1 "${SRC}"/cache/toolchains) )
+	rm -rf "${SRC}"/cache/toolchain/*.tar.xz*
+	local existing_dirs=( $(ls -1 "${SRC}"/cache/toolchain) )
 	for dir in ${existing_dirs[@]}; do
 		local found=no
 		for toolchain in ${toolchains[@]}; do
@@ -1165,7 +1139,7 @@ prepare_host()
 		done
 		if [[ $found == no ]]; then
 			display_alert "Removing obsolete toolchain" "$dir"
-			rm -rf "${SRC}/cache/toolchains/${dir}"
+			rm -rf "${SRC}/cache/toolchain/${dir}"
 		fi
 	done
 
@@ -1179,6 +1153,7 @@ prepare_host()
 		test -e /proc/sys/fs/binfmt_misc/qemu-aarch64 || update-binfmts --enable qemu-aarch64
 	fi
 
+# build aarch64
   fi
 
 	[[ ! -f "${USERPATCHES_PATH}"/customize-image.sh ]] && cp "${SRC}"/config/templates/customize-image.sh.template "${USERPATCHES_PATH}"/customize-image.sh
@@ -1211,9 +1186,12 @@ function webseed ()
 unset text
 WEBSEED=(
 	"https://dl.armbian.com/"
-	"https://imola.armbian.com/"
+	"https://imola.armbian.com/dl/"
 	"https://mirrors.netix.net/armbian/dl/"
 	"https://mirrors.dotsrc.org/armbian-dl/"
+	"https://us.mirrors.fossho.st/armbian/dl/"
+	"https://uk.mirrors.fossho.st/armbian/dl/"
+	"https://armbian.systemonachip.net/dl/"
 	)
 	if [[ -z $DOWNLOAD_MIRROR ]]; then
 		WEBSEED=(
@@ -1268,7 +1246,7 @@ download_and_verify()
 		return
 	else
 		# download control file
-		local torrent=${server}torrent/${filename}.torrent
+		local torrent=${server}$remotedir/${filename}.torrent
 		aria2c --download-result=hide --disable-ipv6=true --summary-interval=0 --console-log-level=error --auto-file-renaming=false \
 		--continue=false --allow-overwrite=true --dir="${localdir}" "$(webseed "$remotedir/${filename}.asc")" -o "${filename}.asc"
 		[[ $? -ne 0 ]] && display_alert "Failed to download control file" "" "wrn"
